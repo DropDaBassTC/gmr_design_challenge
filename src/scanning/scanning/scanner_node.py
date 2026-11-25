@@ -98,7 +98,8 @@ class ScannerNode(Node):
 
     def __init__(
         self, model, data, *, horizontal_samples=180, vertical_channels=8,
-        max_range=10.0, noise_std=0.01, scan_hz=10.0,
+        max_range=10.0, noise_std=0.01, scan_hz=10.0, site_name="lidar",
+        node_name="faro_scanner", topic_prefix="", frame_id=None, activation_guard=None,
     ):
         import mujoco
 
@@ -106,28 +107,38 @@ class ScannerNode(Node):
             raise ValueError("sample counts, range, rate must be positive and noise nonnegative")
         if not all(math.isfinite(value) for value in (max_range, noise_std, scan_hz)):
             raise ValueError("scan range, rate, and noise must be finite")
-        site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "lidar")
+        site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
         if site_id < 0:
-            raise ValueError("MuJoCo scene is missing the 'lidar' site")
+            raise ValueError(f"MuJoCo scene is missing the '{site_name}' site")
 
-        super().__init__("faro_scanner")
+        super().__init__(node_name)
         self.model = model
         self.data = data
         self.mujoco = mujoco
         self.site_id = site_id
+        self.frame_id = frame_id or site_name
+        self.activation_guard = activation_guard
 
         self.directions = generate_directions(horizontal_samples, vertical_channels, 360.0, 300.0)
         self.max_range = max_range
         self.noise_std = noise_std
         self.active = False
-        self.publisher = self.create_publisher(PointCloud2, "points", 10)
-        self.service = self.create_service(SetBool, "set_scanning", self._set_active)
+        self.publisher = self.create_publisher(PointCloud2, f"{topic_prefix}/points", 10)
+        self.service = self.create_service(
+            SetBool, f"{topic_prefix}/set_scanning", self._set_active
+        )
         self.timer = self.create_timer(1.0 / scan_hz, self.scan)
         self.get_logger().info(
             "FARO Focus simulation: 360x300 degree dome; sampling/range/noise are placeholders"
         )
 
     def _set_active(self, request, response):
+        if request.data and self.activation_guard is not None:
+            allowed, message = self.activation_guard()
+            if not allowed:
+                response.success = False
+                response.message = message
+                return response
         self.active = request.data
         response.success = True
         response.message = "scanning activated" if self.active else "scanning deactivated"
@@ -150,7 +161,7 @@ class ScannerNode(Node):
                 measured_distance = max(0.0, distance + np.random.normal(0.0, self.noise_std))
                 if measured_distance <= self.max_range:
                     points.append(local * measured_distance)
-        msg = cloud_from_points(points, "lidar")
+        msg = cloud_from_points(points, self.frame_id)
         msg.header.stamp = self.get_clock().now().to_msg()
         self.publisher.publish(msg)
         return msg

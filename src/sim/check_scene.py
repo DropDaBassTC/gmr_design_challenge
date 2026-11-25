@@ -26,11 +26,20 @@ def main():
     np.testing.assert_allclose(bounds[:, 1], [-36.5, 36.5], atol=0.02)
     np.testing.assert_allclose(bounds[:, 2], [-0.5, 31.51], atol=0.02)
 
-    rail_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "track")
-    assert rail_id >= 0, "sensor track joint is missing"
-    actuator_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, "track_velocity")
-    assert actuator_id >= 0, "track velocity actuator is missing"
-    assert model.jnt_limited[rail_id] and np.allclose(model.jnt_range[rail_id], [-39.0, 39.0])
+    for joint_name, actuator_name in (
+        ("track", "track_velocity"),
+        ("floor_rail_2", "floor_rail_2_velocity"),
+        ("floor_rail_3", "floor_rail_3_velocity"),
+        ("crane_bridge_x", "crane_bridge_velocity"),
+        ("crane_trolley_y", "crane_trolley_velocity"),
+    ):
+        joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+        actuator_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, actuator_name)
+        assert joint_id >= 0 and actuator_id >= 0, f"missing {joint_name}/{actuator_name}"
+        assert model.jnt_limited[joint_id], f"{joint_name} travel is not bounded"
+    for site_name in ("floor_lidar_1", "floor_lidar_2", "floor_lidar_3", "lidar"):
+        site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
+        assert site_id >= 0, f"scanner site {site_name} is missing"
 
     mujoco.mj_forward(model, data)
     ray_groups = np.zeros(6, dtype=np.uint8)
@@ -43,7 +52,7 @@ def main():
     assert 33.0 < distance < 37.0, f"interior hangar wall ray returned {distance} m"
     assert model.geom_group[geomid[0]] == 2, "interior ray did not hit the hangar mesh"
 
-    print("hangar bounds, interior ray, track joint, and velocity actuator verified")
+    print("hangar bounds, interior ray, three floor rails, crane, and four scanner sites verified")
 
 
 if __name__ == "__main__":

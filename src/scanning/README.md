@@ -15,3 +15,8 @@ transforms and concatenates XYZ float32 points; it does not estimate poses,
 register overlapping scans, or remove duplicates. Get transforms from the
 simulator/TF tree; do not concatenate clouds captured at different carriage
 poses without their respective poses.
+
+The MuJoCo bridge can run an automatic route that keeps each scanner active
+during its simulated rail pass. This continuous-moving capture is a simulation
+approximation only; the design brief's intended Focus Core workflow uses
+stationary scan stations.

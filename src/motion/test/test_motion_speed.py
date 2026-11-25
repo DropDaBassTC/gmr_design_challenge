@@ -77,6 +77,26 @@ class MotionSpeedTest(unittest.TestCase):
             executor.remove_node(self.node)
             source.destroy_node()
 
+    def test_independent_rail_and_crane_speed_topics_control_separate_actuators(self):
+        node = MotionNode(
+            self.model,
+            self.data,
+            {
+                "floor_rail_2_speed_cmd": "floor_rail_2_velocity",
+                "crane_bridge_speed_cmd": "crane_bridge_velocity",
+            },
+            node_name="multi_axis_motion_test",
+        )
+        try:
+            node._set_speed("floor_rail_2_speed_cmd", Float64(data=0.2))
+            node._set_speed("crane_bridge_speed_cmd", Float64(data=-0.3))
+            rail_id = node.actuator_ids["floor_rail_2_speed_cmd"]
+            crane_id = node.actuator_ids["crane_bridge_speed_cmd"]
+            self.assertEqual(self.data.ctrl[rail_id], 0.2)
+            self.assertEqual(self.data.ctrl[crane_id], -0.3)
+        finally:
+            node.destroy_node()
+
 
 if __name__ == "__main__":
     unittest.main()
