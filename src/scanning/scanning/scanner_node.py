@@ -37,6 +37,64 @@ def cloud_from_points(points, frame_id):
     return msg
 
 
+def stitch_pointclouds(clouds, transforms, target_frame):
+    """Transform XYZ float32 clouds into target_frame and concatenate them.
+
+    Each 4x4 matrix maps points from its cloud's frame into target_frame.
+    This applies known poses; it does not estimate registration.
+    """
+    if len(clouds) != len(transforms):
+        raise ValueError("clouds and transforms must have the same number of items")
+    if not target_frame:
+        raise ValueError("target_frame must not be empty")
+
+    stitched = []
+    for cloud, transform in zip(clouds, transforms):
+        matrix = np.asarray(transform, dtype=np.float64)
+        if matrix.shape != (4, 4) or not np.isfinite(matrix).all():
+            raise ValueError("each transform must be a finite 4x4 matrix")
+        if not np.allclose(matrix[3], [0.0, 0.0, 0.0, 1.0]):
+            raise ValueError("each transform must be homogeneous")
+        if not cloud.header.frame_id:
+            raise ValueError("each cloud must have a source frame")
+        if not target_frame:
+            raise ValueError("target_frame must not be empty")
+
+        fields = {field.name: field for field in cloud.fields}
+        if any(
+            name not in fields
+            or fields[name].datatype != PointField.FLOAT32
+            or fields[name].count != 1
+            for name in "xyz"
+        ):
+            raise ValueError("clouds must have scalar float32 x, y, and z fields")
+        offsets = [fields[name].offset for name in "xyz"]
+        if min(offsets) < 0 or max(offsets) + 4 > cloud.point_step:
+            raise ValueError("XYZ fields must fit inside point_step")
+        if cloud.row_step < cloud.width * cloud.point_step:
+            raise ValueError("row_step is smaller than the point data")
+        if len(cloud.data) < cloud.height * cloud.row_step:
+            raise ValueError("cloud data is shorter than its declared dimensions")
+
+        byte_order = ">" if cloud.is_bigendian else "<"
+        dtype = np.dtype({
+            "names": list("xyz"),
+            "formats": [byte_order + "f4"] * 3,
+            "offsets": offsets,
+            "itemsize": cloud.point_step,
+        })
+        records = np.ndarray(
+            (cloud.height, cloud.width), dtype=dtype, buffer=cloud.data,
+            strides=(cloud.row_step, cloud.point_step),
+        )
+        points = np.column_stack([records[name].reshape(-1) for name in "xyz"])
+        transformed = points @ matrix[:3, :3].T + matrix[:3, 3]
+        stitched.append(transformed.astype(np.float32, copy=False))
+
+    points = np.concatenate(stitched, axis=0) if stitched else np.empty((0, 3), dtype=np.float32)
+    return cloud_from_points(points, target_frame)
+
+
 class ScannerNode(Node):
     """Raycast shared MuJoCo state only while activated by SetBool service."""
 
