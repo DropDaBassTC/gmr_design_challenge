@@ -57,8 +57,6 @@ def stitch_pointclouds(clouds, transforms, target_frame):
             raise ValueError("each transform must be homogeneous")
         if not cloud.header.frame_id:
             raise ValueError("each cloud must have a source frame")
-        if not target_frame:
-            raise ValueError("target_frame must not be empty")
 
         fields = {field.name: field for field in cloud.fields}
         if any(
