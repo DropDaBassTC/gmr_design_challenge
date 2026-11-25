@@ -1,0 +1,37 @@
+<mujoco model="hangar_sim">
+  <compiler angle="radian" meshdir="." autolimits="true" />
+  <option timestep="0.002" gravity="0 0 -9.81" />
+  <asset>
+    <mesh name="hangar" file="Hangar_model.stl" />
+  </asset>
+  <worldbody>
+    <light pos="0 0 28" dir="0 0 -1" directional="true" />
+    <!-- Visual/map mesh. MuJoCo convexifies mesh collision, so scan/collision surfaces use boxes below. -->
+    <geom name="hangar_visual" type="mesh" mesh="hangar" contype="0" conaffinity="0" group="2" />
+    <geom name="hangar_floor" type="box" pos="0 0 -0.25" size="40 36 0.25" group="1" />
+    <geom name="hangar_wall_x_pos" type="box" pos="40.25 0 12" size="0.25 36 12" group="1" />
+    <geom name="hangar_wall_x_neg" type="box" pos="-40.25 0 12" size="0.25 36 12" group="1" />
+    <geom name="hangar_wall_y_pos" type="box" pos="0 36.25 12" size="40 0.25 12" group="1" />
+    <geom name="hangar_wall_y_neg" type="box" pos="0 -36.25 12" size="40 0.25 12" group="1" />
+    <geom name="hangar_roof_y_pos" type="box" pos="0 18 27.5" quat="0.995396 0.0958458 0 0" size="40 18.34 0.25" group="1" />
+    <geom name="hangar_roof_y_neg" type="box" pos="0 -18 27.5" quat="0.995396 -0.0958458 0 0" size="40 18.34 0.25" group="1" />
+
+    <geom name="ground" type="plane" pos="0 0 -0.5" size="50 50 0.1" contype="0" conaffinity="0" group="2" />
+    <geom name="sample_box" type="box" pos="2 0 0.5" size="0.1 1 0.5" group="0" />
+    <geom name="sample_cylinder" type="cylinder" pos="-1.5 1.5 0.4" size="0.3 0.4" group="0" />
+
+    <body name="carriage" pos="0 0 2">
+      <joint name="track" type="slide" axis="1 0 0" range="-39 39" damping="2" />
+      <geom name="carriage_body" type="box" size="0.5 0.5 0.2" mass="20" />
+      <body name="scanner_pan" pos="0 0 0.3">
+        <joint name="pan" type="hinge" axis="0 0 1" />
+        <geom name="scanner_body" type="box" size="0.1 0.1 0.05" mass="1" />
+        <site name="lidar" pos="0 0 0.1" />
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="pan_motor" joint="pan" gear="1" />
+    <velocity name="track_velocity" joint="track" kv="500" ctrlrange="-0.5 0.5" forcerange="-200 200" />
+  </actuator>
+</mujoco>

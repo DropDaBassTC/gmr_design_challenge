@@ -1,0 +1,46 @@
+x-ros-common: &ros-common
+  build: .
+  image: ros2-scanner:latest
+  network_mode: host
+  ipc: host
+  restart: unless-stopped
+  environment: &ros-env
+    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+    RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+  group_add:
+    - dialout
+    - video
+
+# Real hardware:  docker compose --profile hw  up --build
+# Simulation:     docker compose --profile sim up --build
+# Never run both profiles on the same ROS_DOMAIN_ID.
+services:
+  sensors:
+    <<: *ros-common
+    profiles: [hw]
+    container_name: scanner_sensors
+    command: ros2 launch scanner_bringup sensors.launch.py
+    devices:
+      - /dev/lidar:/dev/lidar
+
+  motors:
+    <<: *ros-common
+    profiles: [hw]
+    container_name: scanner_motors
+    command: ros2 launch scanner_bringup motors.launch.py
+    devices:
+      - /dev/motor_ctrl:/dev/motor_ctrl
+    stop_grace_period: 5s
+
+  # MuJoCo stands in for the hardware: same topics, no devices.
+  sim_bridge:
+    <<: *ros-common
+    profiles: [sim]
+    container_name: scanner_sim_bridge
+    command: python3 /ros_ws/src/sim/mujoco_bridge.py
+    environment:
+      <<: *ros-env
+      ROS_DOMAIN_ID: ${SIM_ROS_DOMAIN_ID:-43}
+      MUJOCO_GL: egl
+    volumes:
+      - ./src/sim:/ros_ws/src/sim
