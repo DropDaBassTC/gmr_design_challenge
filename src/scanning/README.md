@@ -3,7 +3,13 @@ ROS 2 package for simulated FARO Focus-style scanning.
 `ScannerNode(model, data)` raycasts the shared MuJoCo scene and publishes XYZ
 `sensor_msgs/msg/PointCloud2` on `/points` while active. Call
 `/set_scanning` (`std_srvs/srv/SetBool`) with `true` to activate and `false`
-to stop. The simulated dome is 360° × 300°; sampling (180 × 8 rays), range
+to stop. Frames during the activation interval are streamed to a disk spool
+and assembled into one raw PLY at deactivation, avoiding an unbounded
+in-memory capture. An orderly simulator shutdown writes an active partial
+capture before closing scanner nodes; abrupt process termination is not
+guaranteed to produce a valid PLY.
+Each frame is transformed to world coordinates using its acquisition-time pose.
+The simulated dome is 360° × 300°; sampling (180 × 8 rays), range
 (10 m), and noise (1 cm standard deviation) are temporary placeholders, not
 verified Focus Core SKU settings. Construct this node with the simulator's
 live model/data and a single-threaded executor.
@@ -19,4 +25,7 @@ poses without their respective poses.
 The MuJoCo bridge can run an automatic route that keeps each scanner active
 during its simulated rail pass. This continuous-moving capture is a simulation
 approximation only; the design brief's intended Focus Core workflow uses
-stationary scan stations.
+stationary scan stations. Each rail outbound and overhead X traversal now
+produces one raw file; return and reposition frames are excluded. The bridge
+reads simulator route/scanner settings from root `sensors.yml`. Optical
+exposure is not modeled or configurable in this simulator.

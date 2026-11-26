@@ -8,6 +8,7 @@ this node with the same model/data used by the scanner.
 
 When constructed by the simulation bridge, the node also consumes
 `/floor_rail_2_speed_cmd`, `/floor_rail_3_speed_cmd`,
+`/floor_rail_4_speed_cmd`,
 `/crane_bridge_speed_cmd`, and `/crane_trolley_speed_cmd`, each controlling its
 own range-limited actuator. `/track_speed_cmd` remains the first floor rail's
 backwards-compatible command.

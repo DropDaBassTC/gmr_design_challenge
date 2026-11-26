@@ -7,6 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Add driver/hardware packages you need here (examples: serial, lidar, ros2_control)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-colcon-common-extensions \
+        python3-yaml \
         python3-rosdep \
         ros-jazzy-ros2-control \
         ros-jazzy-ros2-controllers \

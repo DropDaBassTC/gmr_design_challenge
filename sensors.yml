@@ -1,0 +1,10 @@
+# Simulator controls only; optical exposure is not modeled or configurable.
+scan_sequence:
+  speed_mps: 0.5
+  crane_y_step_m: 8.0
+scanner:
+  horizontal_samples: 180
+  vertical_channels: 8
+  max_range_m: 10.0
+  range_noise_std_m: 0.01
+  scan_hz: 10.0

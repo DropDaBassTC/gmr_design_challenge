@@ -1,4 +1,7 @@
 import math
+import tempfile
+from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import rclpy
@@ -93,6 +96,145 @@ def stitch_pointclouds(clouds, transforms, target_frame):
     return cloud_from_points(points, target_frame)
 
 
+class PointCloudRecorder:
+    """Write raw captures and a world-frame merged binary PLY."""
+
+    def __init__(self, output_dir, clock=None):
+        self.output_dir = Path(output_dir)
+        self.raw_dir = self.output_dir / "raw_scans"
+        self.raw_dir.mkdir(parents=True, exist_ok=True)
+        self.clock = clock or (lambda: datetime.now().astimezone())
+        self.raw_paths = []
+        self._capture_spool = None
+        self._capture_stream = None
+        self._capture_vertex_count = 0
+
+    @property
+    def capture_active(self):
+        return self._capture_spool is not None
+
+    @staticmethod
+    def _write_ply(path, points):
+        points = np.asarray(points, dtype="<f4").reshape(-1, 3)
+        header = (
+            "ply\nformat binary_little_endian 1.0\n"
+            f"element vertex {len(points)}\n"
+            "property float x\nproperty float y\nproperty float z\n"
+            "end_header\n"
+        )
+        with Path(path).open("wb") as stream:
+            stream.write(header.encode("ascii"))
+            points.tofile(stream)
+
+    @staticmethod
+    def _vertex_payload(path):
+        with Path(path).open("rb") as stream:
+            count = None
+            while line := stream.readline():
+                if line.startswith(b"element vertex "):
+                    count = int(line.split()[2])
+                if line == b"end_header\n":
+                    return count, stream.tell()
+        raise ValueError(f"invalid PLY header in {path}")
+
+    def record(self, cloud, origin, rotation):
+        matrix = np.eye(4, dtype=np.float64)
+        matrix[:3, :3] = rotation
+        matrix[:3, 3] = origin
+        world_cloud = stitch_pointclouds([cloud], [matrix], "world")
+        points = np.frombuffer(world_cloud.data, dtype=np.float32).reshape(-1, 3)
+        if self.capture_active:
+            points.tofile(self._capture_stream)
+            self._capture_vertex_count += len(points)
+            return None
+
+        return self._write_capture(points)
+
+    def start_capture(self):
+        if self.capture_active:
+            raise RuntimeError("a point-cloud capture is already active")
+        spool = tempfile.NamedTemporaryFile(
+            mode="wb", prefix=".capture-", suffix=".capture.tmp",
+            dir=self.raw_dir, delete=False,
+        )
+        self._capture_spool = Path(spool.name)
+        self._capture_stream = spool
+        self._capture_vertex_count = 0
+
+    def finish_capture(self):
+        if not self.capture_active:
+            raise RuntimeError("no point-cloud capture is active")
+        spool_path = self._capture_spool
+        if self._capture_stream is not None:
+            self._capture_stream.flush()
+            self._capture_stream.close()
+            self._capture_stream = None
+        path = self._write_capture_spool(spool_path)
+        spool_path.unlink()
+        self._capture_spool = None
+        self._capture_vertex_count = 0
+        return path
+
+    def _write_capture_spool(self, spool_path):
+        timestamp = self.clock().astimezone().strftime("%Y-%m-%d-%H-%M-%S.%f")
+        path = self.raw_dir / f"{timestamp}.ply"
+        suffix = 1
+        while path.exists():
+            path = self.raw_dir / f"{timestamp}-{suffix}.ply"
+            suffix += 1
+        temporary = path.with_suffix(".ply.tmp")
+        header = (
+            "ply\nformat binary_little_endian 1.0\n"
+            f"element vertex {self._capture_vertex_count}\n"
+            "property float x\nproperty float y\nproperty float z\n"
+            "end_header\n"
+        )
+        with temporary.open("wb") as output:
+            output.write(header.encode("ascii"))
+            with spool_path.open("rb") as source:
+                while chunk := source.read(1024 * 1024):
+                    output.write(chunk)
+        temporary.replace(path)
+        self.raw_paths.append(path)
+        return path
+
+    def _write_capture(self, points):
+        timestamp = self.clock().astimezone().strftime("%Y-%m-%d-%H-%M-%S.%f")
+        path = self.raw_dir / f"{timestamp}.ply"
+        suffix = 1
+        while path.exists():
+            path = self.raw_dir / f"{timestamp}-{suffix}.ply"
+            suffix += 1
+        temporary = path.with_suffix(".ply.tmp")
+        self._write_ply(temporary, points)
+        temporary.replace(path)
+        self.raw_paths.append(path)
+        return path
+
+    def finalize(self):
+        if self.capture_active:
+            raise RuntimeError("cannot finalize while a point-cloud capture is active")
+        merged = self.output_dir / "mergedPointcloud.ply"
+        temporary = merged.with_suffix(".ply.tmp")
+        payloads = [(path, *self._vertex_payload(path)) for path in self.raw_paths]
+        total = sum(count or 0 for _, count, _ in payloads)
+        header = (
+            "ply\nformat binary_little_endian 1.0\n"
+            f"element vertex {total}\n"
+            "property float x\nproperty float y\nproperty float z\n"
+            "end_header\n"
+        )
+        with temporary.open("wb") as output:
+            output.write(header.encode("ascii"))
+            for path, _count, offset in payloads:
+                with path.open("rb") as source:
+                    source.seek(offset)
+                    while chunk := source.read(1024 * 1024):
+                        output.write(chunk)
+        temporary.replace(merged)
+        return merged
+
+
 class ScannerNode(Node):
     """Raycast shared MuJoCo state only while activated by SetBool service."""
 
@@ -100,6 +242,7 @@ class ScannerNode(Node):
         self, model, data, *, horizontal_samples=180, vertical_channels=8,
         max_range=10.0, noise_std=0.01, scan_hz=10.0, site_name="lidar",
         node_name="faro_scanner", topic_prefix="", frame_id=None, activation_guard=None,
+        on_scan=None, on_capture_change=None,
     ):
         import mujoco
 
@@ -118,6 +261,8 @@ class ScannerNode(Node):
         self.site_id = site_id
         self.frame_id = frame_id or site_name
         self.activation_guard = activation_guard
+        self.on_scan = on_scan
+        self.on_capture_change = on_capture_change
 
         self.directions = generate_directions(horizontal_samples, vertical_channels, 360.0, 300.0)
         self.max_range = max_range
@@ -139,6 +284,8 @@ class ScannerNode(Node):
                 response.success = False
                 response.message = message
                 return response
+        if request.data != self.active and self.on_capture_change is not None:
+            self.on_capture_change(request.data)
         self.active = request.data
         response.success = True
         response.message = "scanning activated" if self.active else "scanning deactivated"
@@ -164,4 +311,6 @@ class ScannerNode(Node):
         msg = cloud_from_points(points, self.frame_id)
         msg.header.stamp = self.get_clock().now().to_msg()
         self.publisher.publish(msg)
+        if self.on_scan is not None:
+            self.on_scan(msg, origin, rotation.copy())
         return msg

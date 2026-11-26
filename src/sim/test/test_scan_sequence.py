@@ -9,6 +9,7 @@ AXES = {
     "floor_rail_1": "track",
     "floor_rail_2": "floor_rail_2",
     "floor_rail_3": "floor_rail_3",
+    "floor_rail_4": "floor_rail_4",
     "crane_x": "crane_bridge_x",
     "crane_y": "crane_trolley_y",
 }
@@ -31,7 +32,7 @@ class ScanSequenceTest(unittest.TestCase):
         self.data = mujoco.MjData(self.model)
         self.scanners = {
             name: FakeScanner()
-            for name in ("floor_rail_1", "floor_rail_2", "floor_rail_3", "crane")
+            for name in ("floor_rail_1", "floor_rail_2", "floor_rail_3", "floor_rail_4", "crane")
         }
         self.sequence = ScanSequence(self.model, self.data, self.scanners, None)
 
@@ -59,8 +60,11 @@ class ScanSequenceTest(unittest.TestCase):
         self.sequence.step()
         rail_1 = self.sequence.actuator_ids["floor_rail_1"]
         self.assertEqual(self.data.ctrl[rail_1], 0.5)
+        self.sequence.step()
+        self.assertEqual(self.sequence.phase, "floor_scan")
+        self.assertTrue(self.scanners["floor_rail_1"].active)
 
-        for index in range(1, 4):
+        for index in range(1, 5):
             name = f"floor_rail_{index}"
             actuator = self.sequence.actuator_ids[name]
             self.set_axis_position(name, 1)
@@ -71,7 +75,7 @@ class ScanSequenceTest(unittest.TestCase):
             self.assertEqual(self.data.ctrl[actuator], -0.5)
             self.set_axis_position(name, 0)
             self.sequence.step()
-            if index < 3:
+            if index < 4:
                 next_name = f"floor_rail_{index + 1}"
                 self.assertEqual(self.sequence.phase, "floor_scan")
                 self.assertEqual(
@@ -81,6 +85,85 @@ class ScanSequenceTest(unittest.TestCase):
             else:
                 self.assertEqual(self.sequence.phase, "crane_scan_forward")
                 self.assertTrue(self.scanners["crane"].active)
+
+    def test_floor_capture_closes_before_return_and_next_capture_starts_on_next_rail(self):
+        class FakeRecorder:
+            def __init__(self):
+                self.active = None
+                self.events = []
+
+            def start_capture(self, name):
+                self.active = name
+                self.events.append(("start", name))
+
+            def finish_capture(self, name):
+                self.events.append(("finish", name))
+                self.active = None
+
+        recorder = FakeRecorder()
+        self.sequence.on_capture_start = recorder.start_capture
+        self.sequence.on_capture_finish = recorder.finish_capture
+        self.sequence.phase = "floor_scan"
+        self.sequence._begin_floor_scan()
+        self.assertEqual(recorder.events, [("start", "floor_rail_1")])
+
+        self.set_axis_position("floor_rail_1", 1)
+        self.sequence.step()
+        self.assertEqual(self.sequence.phase, "floor_return")
+        self.assertEqual(recorder.events[-1], ("finish", "floor_rail_1"))
+        self.assertIsNone(recorder.active)
+
+        self.set_axis_position("floor_rail_1", 0)
+        self.sequence.step()
+        self.assertEqual(recorder.events[-2:], [
+            ("finish", "floor_rail_1"), ("start", "floor_rail_2")
+        ])
+
+    def test_crane_capture_closes_before_shift_and_restarts_for_next_x_pass(self):
+        class CaptureEvents:
+            def __init__(self):
+                self.events = []
+
+            def start(self, name):
+                self.events.append(("start", name))
+
+            def finish(self, name):
+                self.events.append(("finish", name))
+
+        capture = CaptureEvents()
+        self.sequence.on_capture_start = capture.start
+        self.sequence.on_capture_finish = capture.finish
+        self.sequence.floor_index = 3
+        self.sequence._begin_crane_pass("crane_scan_forward")
+        self.assertEqual(capture.events, [("start", "crane")])
+
+        self.set_axis_position("crane_x", 1)
+        self.sequence.step()
+        self.assertEqual(self.sequence.phase, "crane_shift_y")
+        self.assertEqual(capture.events[-1], ("finish", "crane"))
+
+        self.set_axis_target("crane_y", self.sequence.crane_y_target)
+        self.sequence.step()
+        self.assertEqual(capture.events[-2:], [
+            ("finish", "crane"), ("start", "crane")
+        ])
+
+    def test_route_completion_runs_finalizer_once(self):
+        finalized = []
+        completion = lambda: finalized.append(True)
+        self.sequence = ScanSequence(
+            self.model, self.data, self.scanners, None,
+            enabled=False, on_complete=completion,
+        )
+        self.sequence.running = True
+        self.sequence.phase = "crane_scan_reverse"
+        self.set_axis_position("crane_y", 1)
+        self.set_axis_position("crane_x", 0)
+        self.scanners["crane"].active = True
+
+        self.sequence.step()
+
+        self.assertEqual(finalized, [True])
 
     def test_crane_scans_x_forward_shifts_y_then_scans_x_backward(self):
         self.sequence.crane_y_step = 56.0

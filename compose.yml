@@ -44,3 +44,52 @@ services:
       MUJOCO_GL: egl
     volumes:
       - ./src/sim:/ros_ws/src/sim
+      - ./src/scanning:/ros_ws/src/scanning
+      - ./src/motion:/ros_ws/src/motion
+      - ./input:/ros_ws/input:ro
+      - ./output:/ros_ws/output
+      - ./sensors.yml:/ros_ws/sensors.yml:ro
+
+  sim_viewer:
+    <<: *ros-common
+    profiles: [viewer]
+    container_name: scanner_sim_viewer
+    restart: "no"
+    command: python3 /ros_ws/src/sim/mujoco_bridge.py --viewer
+    environment:
+      <<: *ros-env
+      ROS_DOMAIN_ID: ${SIM_ROS_DOMAIN_ID:-43}
+      MUJOCO_GL: glfw
+      DISPLAY: ${DISPLAY:-}
+      XAUTHORITY: /tmp/.Xauthority
+    volumes:
+      - ./src/sim:/ros_ws/src/sim
+      - ./src/scanning:/ros_ws/src/scanning
+      - ./src/motion:/ros_ws/src/motion
+      - ./input:/ros_ws/input:ro
+      - ./output:/ros_ws/output
+      - ./sensors.yml:/ros_ws/sensors.yml:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - type: bind
+        source: ${XAUTHORITY:-${HOME}/.Xauthority}
+        target: /tmp/.Xauthority
+        read_only: true
+        bind:
+          create_host_path: false
+
+  test_headless:
+    <<: *ros-common
+    profiles: [test]
+    container_name: scanner_test_headless
+    restart: "no"
+    entrypoint: ["/bin/bash", "/ros_ws/scripts/test-headless.sh"]
+    environment:
+      <<: *ros-env
+      MUJOCO_GL: egl
+    volumes:
+      - ./src/sim:/ros_ws/src/sim:ro
+      - ./src/scanning:/ros_ws/src/scanning:ro
+      - ./src/motion:/ros_ws/src/motion:ro
+      - ./scripts:/ros_ws/scripts:ro
+      - ./input:/ros_ws/input:ro
+      - ./sensors.yml:/ros_ws/sensors.yml:ro

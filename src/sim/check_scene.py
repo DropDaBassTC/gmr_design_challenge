@@ -30,6 +30,7 @@ def main():
         ("track", "track_velocity"),
         ("floor_rail_2", "floor_rail_2_velocity"),
         ("floor_rail_3", "floor_rail_3_velocity"),
+        ("floor_rail_4", "floor_rail_4_velocity"),
         ("crane_bridge_x", "crane_bridge_velocity"),
         ("crane_trolley_y", "crane_trolley_velocity"),
     ):
@@ -37,9 +38,28 @@ def main():
         actuator_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, actuator_name)
         assert joint_id >= 0 and actuator_id >= 0, f"missing {joint_name}/{actuator_name}"
         assert model.jnt_limited[joint_id], f"{joint_name} travel is not bounded"
-    for site_name in ("floor_lidar_1", "floor_lidar_2", "floor_lidar_3", "lidar"):
+    for site_name in (*[f"floor_lidar_{index}" for index in range(1, 5)], "lidar"):
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
         assert site_id >= 0, f"scanner site {site_name} is missing"
+
+    for mesh_name in ("floor_rail_profile", "floor_carriage"):
+        mesh_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_MESH, mesh_name)
+        assert mesh_id >= 0, f"floor assembly mesh {mesh_name} is missing"
+    for index in range(1, 5):
+        carriage_id = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_GEOM, f"floor_carriage_{index}_mesh"
+        )
+        rail_id = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_GEOM, f"floor_rail_{index}_profile"
+        )
+        assert rail_id >= 0 and carriage_id >= 0, (
+            f"floor rail {index} mesh assembly is missing"
+        )
+        rail_body = model.geom_bodyid[rail_id]
+        carriage_body = model.geom_bodyid[carriage_id]
+        expected_y = (-27.375, -9.125, 9.125, 27.375)[index - 1]
+        assert abs(model.body_pos[rail_body, 1] - expected_y) < 1e-6
+        assert abs(model.body_pos[carriage_body, 0] - 39.725) < 1e-6
 
     mujoco.mj_forward(model, data)
     ray_groups = np.zeros(6, dtype=np.uint8)
@@ -52,7 +72,7 @@ def main():
     assert 33.0 < distance < 37.0, f"interior hangar wall ray returned {distance} m"
     assert model.geom_group[geomid[0]] == 2, "interior ray did not hit the hangar mesh"
 
-    print("hangar bounds, interior ray, three floor rails, crane, and four scanner sites verified")
+    print("hangar bounds, interior ray, four floor rails, crane, and five scanner sites verified")
 
 
 if __name__ == "__main__":

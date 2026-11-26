@@ -1,4 +1,4 @@
-"""Automatic simulated continuous-scan route for the four MuJoCo scanners."""
+"""Automatic simulated continuous-scan route for the five MuJoCo scanners."""
 
 import mujoco
 from std_srvs.srv import SetBool
@@ -8,6 +8,7 @@ AXES = {
     "floor_rail_1": ("track_speed_cmd", "track"),
     "floor_rail_2": ("floor_rail_2_speed_cmd", "floor_rail_2"),
     "floor_rail_3": ("floor_rail_3_speed_cmd", "floor_rail_3"),
+    "floor_rail_4": ("floor_rail_4_speed_cmd", "floor_rail_4"),
     "crane_x": ("crane_bridge_speed_cmd", "crane_bridge_x"),
     "crane_y": ("crane_trolley_speed_cmd", "crane_trolley_y"),
 }
@@ -18,7 +19,8 @@ class ScanSequence:
 
     def __init__(
         self, model, data, scanners, motion_node=None, speed=0.5,
-        crane_y_step=8.0, enabled=True,
+        crane_y_step=8.0, enabled=True, on_complete=None,
+        on_capture_start=None, on_capture_finish=None,
     ):
         if speed <= 0 or crane_y_step <= 0:
             raise ValueError("scan speed and crane Y step must be positive")
@@ -26,6 +28,9 @@ class ScanSequence:
         self.data = data
         self.scanners = scanners
         self.motion_node = motion_node
+        self.on_complete = on_complete
+        self.on_capture_start = on_capture_start
+        self.on_capture_finish = on_capture_finish
         self.speed = speed
         self.crane_y_step = crane_y_step
         self.running = enabled
@@ -50,6 +55,7 @@ class ScanSequence:
                 "floor_rail_1": "track_velocity",
                 "floor_rail_2": "floor_rail_2_velocity",
                 "floor_rail_3": "floor_rail_3_velocity",
+                "floor_rail_4": "floor_rail_4_velocity",
                 "crane_x": "crane_bridge_velocity",
                 "crane_y": "crane_trolley_velocity",
             }[axis]
@@ -98,15 +104,12 @@ class ScanSequence:
         if not response.success:
             raise RuntimeError(f"sequence could not activate {scanner_name}: {response.message}")
 
-    def _deactivate(self, scanner_name):
-        request, response = SetBool.Request(), SetBool.Response()
-        request.data = False
-        self.scanners[scanner_name]._set_active(request, response)
-
     def _begin_floor_scan(self):
         scanner_name = f"floor_rail_{self.floor_index + 1}"
         self.phase = "floor_scan"
         self._activate(scanner_name)
+        if self.on_capture_start is not None:
+            self.on_capture_start(scanner_name)
 
     def _begin_crane_scan(self):
         self._begin_crane_pass("crane_scan_forward")
@@ -114,19 +117,33 @@ class ScanSequence:
     def _begin_crane_pass(self, phase):
         self.phase = phase
         self._activate("crane")
+        if self.on_capture_start is not None:
+            self.on_capture_start("crane")
 
-    def _advance_crane_y(self, next_phase):
+    def _deactivate(self, scanner_name):
+        request, response = SetBool.Request(), SetBool.Response()
+        request.data = False
+        self.scanners[scanner_name]._set_active(request, response)
+        if self.on_capture_finish is not None:
+            self.on_capture_finish(scanner_name)
+
+    def _advance_crane_y(self, next_phase, finish_at_limit=False):
         y_position = self.data.qpos[self.axes["crane_y"][0]]
         y_max = self.axes["crane_y"][2][1]
-        if y_position >= y_max - 0.03:
-            self.phase = "complete"
-            self.running = False
-            for axis in AXES:
-                self._set_control(axis, 0.0)
+        if finish_at_limit and y_position >= y_max - 0.03:
+            self._complete()
             return
         self.crane_y_target = min(y_position + self.crane_y_step, y_max)
         self.next_crane_phase = next_phase
         self.phase = "crane_shift_y"
+
+    def _complete(self):
+        self.phase = "complete"
+        self.running = False
+        for axis in AXES:
+            self._set_control(axis, 0.0)
+        if self.on_complete is not None:
+            self.on_complete()
 
     def step(self):
         if not self.running:
@@ -149,7 +166,7 @@ class ScanSequence:
             axis = f"floor_rail_{self.floor_index + 1}"
             if self._move_to(axis, 0):
                 self.floor_index += 1
-                if self.floor_index < 3:
+                if self.floor_index < 4:
                     self._begin_floor_scan()
                 else:
                     self._begin_crane_scan()
@@ -158,7 +175,7 @@ class ScanSequence:
         if self.phase == "crane_scan_forward":
             if self._move_to("crane_x", 1):
                 self._deactivate("crane")
-                self._advance_crane_y("crane_scan_reverse")
+                self._advance_crane_y("crane_scan_reverse", finish_at_limit=True)
             return
 
         if self.phase == "crane_shift_y":
@@ -169,4 +186,4 @@ class ScanSequence:
         if self.phase == "crane_scan_reverse":
             if self._move_to("crane_x", 0):
                 self._deactivate("crane")
-                self._advance_crane_y("crane_scan_forward")
+                self._advance_crane_y("crane_scan_forward", finish_at_limit=True)

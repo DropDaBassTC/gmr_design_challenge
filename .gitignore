@@ -1,0 +1,3 @@
+__pycache__/
+output/*.ply
+output/raw_scans/*.ply

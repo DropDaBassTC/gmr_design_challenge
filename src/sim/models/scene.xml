@@ -3,11 +3,15 @@
   <option timestep="0.002" gravity="0 0 -9.81" />
   <asset>
     <mesh name="hangar" file="Hangar_model.stl" />
+    <mesh name="input_mesh" file="../../../input/input.stl" />
+    <mesh name="floor_rail_profile" file="ivtaaqr-0550-000_mujoco.STL" />
+    <mesh name="floor_carriage" file="ivtaaqc-a20a0.STL" />
   </asset>
   <worldbody>
     <light pos="0 0 28" dir="0 0 -1" directional="true" />
     <!-- Visual/map mesh. MuJoCo convexifies mesh collision, so scan/collision surfaces use boxes below. -->
     <geom name="hangar_visual" type="mesh" mesh="hangar" contype="0" conaffinity="0" group="2" />
+    <geom name="input_mesh_visual" type="mesh" mesh="input_mesh" contype="0" conaffinity="0" group="2" />
     <geom name="hangar_floor" type="box" pos="0 0 -0.25" size="40 36 0.25" group="1" />
     <geom name="hangar_wall_x_pos" type="box" pos="40.25 0 12" size="0.25 36 12" group="1" />
     <geom name="hangar_wall_x_neg" type="box" pos="-40.25 0 12" size="0.25 36 12" group="1" />
@@ -20,34 +24,49 @@
     <geom name="sample_box" type="box" pos="2 0 0.5" size="0.1 1 0.5" group="0" contype="0" conaffinity="0" />
     <geom name="sample_cylinder" type="cylinder" pos="-1.5 1.5 0.4" size="0.3 0.4" group="0" contype="0" conaffinity="0" />
 
-    <!-- Placeholder layout: evenly spaced rails along x; final stations need coverage validation. -->
-    <geom name="floor_rail_1_beam" type="box" pos="0 -24 0.08" size="40 0.15 0.08" group="1" />
-    <geom name="floor_rail_2_beam" type="box" pos="0 0 0.08" size="40 0.15 0.08" group="1" />
-    <geom name="floor_rail_3_beam" type="box" pos="0 24 0.08" size="40 0.15 0.08" group="1" />
-    <body name="floor_carriage_1" pos="0 -24 0.29">
-      <joint name="track" type="slide" axis="1 0 0" range="-39 39" damping="2" />
-      <geom name="floor_carriage_1_body" type="box" size="0.45 0.4 0.12" mass="20" group="1" />
-      <geom name="floor_scanner_1_body" type="box" pos="0 0 0.3" size="0.18 0.18 0.12" mass="2" group="1" />
-      <site name="floor_lidar_1" pos="0 0 0.45" />
+    <!-- Rail origin is at its +X home end; carriage travel is toward -X. -->
+    <body name="floor_rail_1" pos="39.725 -27.375 0.018">
+      <geom name="floor_rail_1_profile" type="mesh" mesh="floor_rail_profile" contype="0" conaffinity="0" group="1" />
     </body>
-    <body name="floor_carriage_2" pos="0 0 0.29">
-      <joint name="floor_rail_2" type="slide" axis="1 0 0" range="-39 39" damping="2" />
-      <geom name="floor_carriage_2_body" type="box" size="0.45 0.4 0.12" mass="20" group="1" />
-      <geom name="floor_scanner_2_body" type="box" pos="0 0 0.3" size="0.18 0.18 0.12" mass="2" group="1" />
-      <site name="floor_lidar_2" pos="0 0 0.45" />
+    <body name="floor_rail_2" pos="39.725 -9.125 0.018">
+      <geom name="floor_rail_2_profile" type="mesh" mesh="floor_rail_profile" contype="0" conaffinity="0" group="1" />
     </body>
-    <body name="floor_carriage_3" pos="0 24 0.29">
-      <joint name="floor_rail_3" type="slide" axis="1 0 0" range="-39 39" damping="2" />
-      <geom name="floor_carriage_3_body" type="box" size="0.45 0.4 0.12" mass="20" group="1" />
-      <geom name="floor_scanner_3_body" type="box" pos="0 0 0.3" size="0.18 0.18 0.12" mass="2" group="1" />
-      <site name="floor_lidar_3" pos="0 0 0.45" />
+    <body name="floor_rail_3" pos="39.725 9.125 0.018">
+      <geom name="floor_rail_3_profile" type="mesh" mesh="floor_rail_profile" contype="0" conaffinity="0" group="1" />
+    </body>
+    <body name="floor_rail_4" pos="39.725 27.375 0.018">
+      <geom name="floor_rail_4_profile" type="mesh" mesh="floor_rail_profile" contype="0" conaffinity="0" group="1" />
+    </body>
+    <body name="floor_carriage_1" pos="39.725 -27.375 0.0444">
+      <joint name="track" type="slide" axis="-1 0 0" range="0 79.45" damping="2" />
+      <geom name="floor_carriage_1_mesh" type="mesh" mesh="floor_carriage" pos="0 0 0.0308" contype="0" conaffinity="0" group="1" />
+      <geom name="floor_scanner_1_body" type="box" pos="0 0 0.1104" size="0.1125 0.1375 0.022" mass="2" group="1" />
+      <site name="floor_lidar_1" pos="0 0 0.2104" />
+    </body>
+    <body name="floor_carriage_2" pos="39.725 -9.125 0.0444">
+      <joint name="floor_rail_2" type="slide" axis="-1 0 0" range="0 79.45" damping="2" />
+      <geom name="floor_carriage_2_mesh" type="mesh" mesh="floor_carriage" pos="0 0 0.0308" contype="0" conaffinity="0" group="1" />
+      <geom name="floor_scanner_2_body" type="box" pos="0 0 0.1104" size="0.1125 0.1375 0.022" mass="2" group="1" />
+      <site name="floor_lidar_2" pos="0 0 0.2104" />
+    </body>
+    <body name="floor_carriage_3" pos="39.725 9.125 0.0444">
+      <joint name="floor_rail_3" type="slide" axis="-1 0 0" range="0 79.45" damping="2" />
+      <geom name="floor_carriage_3_mesh" type="mesh" mesh="floor_carriage" pos="0 0 0.0308" contype="0" conaffinity="0" group="1" />
+      <geom name="floor_scanner_3_body" type="box" pos="0 0 0.1104" size="0.1125 0.1375 0.022" mass="2" group="1" />
+      <site name="floor_lidar_3" pos="0 0 0.2104" />
+    </body>
+    <body name="floor_carriage_4" pos="39.725 27.375 0.0444">
+      <joint name="floor_rail_4" type="slide" axis="-1 0 0" range="0 79.45" damping="2" />
+      <geom name="floor_carriage_4_mesh" type="mesh" mesh="floor_carriage" pos="0 0 0.0308" contype="0" conaffinity="0" group="1" />
+      <geom name="floor_scanner_4_body" type="box" pos="0 0 0.1104" size="0.1125 0.1375 0.022" mass="2" group="1" />
+      <site name="floor_lidar_4" pos="0 0 0.2104" />
     </body>
 
     <!-- Crane runways on the long walls, bridge parked at x=-12, trolley at y=6. -->
     <geom name="crane_runway_y_pos" type="box" pos="0 34 22.8" size="40 0.25 0.25" group="1" contype="0" conaffinity="0" />
     <geom name="crane_runway_y_neg" type="box" pos="0 -34 22.8" size="40 0.25 0.25" group="1" contype="0" conaffinity="0" />
     <body name="crane_bridge" pos="-12 0 23">
-      <joint name="crane_bridge_x" type="slide" axis="1 0 0" range="-27 51" damping="20" />
+      <joint name="crane_bridge_x" type="slide" axis="1 0 0" range="-27 50.7" damping="20" />
       <geom name="crane_bridge_beam" type="box" size="0.4 34 0.25" mass="500" group="1" contype="0" conaffinity="0" />
       <body name="crane_trolley" pos="0 6 0">
         <joint name="crane_trolley_y" type="slide" axis="0 1 0" range="-34 22" damping="10" />
@@ -56,7 +75,7 @@
         <geom name="crane_hook_block" type="box" pos="0 0 -3.0" size="0.5 0.5 0.5" mass="50" group="1" contype="0" conaffinity="0" />
         <body name="overhead_scanner_mount" pos="1.0 0 -0.8">
           <joint name="overhead_scanner_pan" type="hinge" axis="0 0 1" damping="0.5" />
-          <geom name="overhead_scanner_body" type="box" size="0.18 0.18 0.12" mass="2" group="1" contype="0" conaffinity="0" />
+          <geom name="overhead_scanner_body" type="box" size="0.18 0.18 0.12" mass="2" group="1" />
           <site name="lidar" pos="0 0 -0.15" quat="0 1 0 0" />
         </body>
       </body>
@@ -67,6 +86,7 @@
     <velocity name="track_velocity" joint="track" kv="500" ctrlrange="-0.5 0.5" forcerange="-200 200" />
     <velocity name="floor_rail_2_velocity" joint="floor_rail_2" kv="500" ctrlrange="-0.5 0.5" forcerange="-200 200" />
     <velocity name="floor_rail_3_velocity" joint="floor_rail_3" kv="500" ctrlrange="-0.5 0.5" forcerange="-200 200" />
+    <velocity name="floor_rail_4_velocity" joint="floor_rail_4" kv="500" ctrlrange="-0.5 0.5" forcerange="-200 200" />
     <velocity name="crane_bridge_velocity" joint="crane_bridge_x" kv="1000" ctrlrange="-0.5 0.5" forcerange="-1000 1000" />
     <velocity name="crane_trolley_velocity" joint="crane_trolley_y" kv="500" ctrlrange="-0.5 0.5" forcerange="-500 500" />
   </actuator>
