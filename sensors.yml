@@ -1,6 +1,6 @@
 # Simulator controls only; optical exposure is not modeled or configurable.
 scan_sequence:
-  speed_mps: 0.5
+  speed_mps: 0.25
   crane_y_step_m: 8.0
 scanner:
   horizontal_samples: 180

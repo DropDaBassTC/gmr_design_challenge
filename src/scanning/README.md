@@ -9,10 +9,13 @@ in-memory capture. An orderly simulator shutdown writes an active partial
 capture before closing scanner nodes; abrupt process termination is not
 guaranteed to produce a valid PLY.
 Each frame is transformed to world coordinates using its acquisition-time pose.
-The simulated dome is 360° × 300°; sampling (180 × 8 rays), range
-(10 m), and noise (1 cm standard deviation) are temporary placeholders, not
-verified Focus Core SKU settings. Construct this node with the simulator's
-live model/data and a single-threaded executor.
+The ray directions are centered on the scanner site's local +Z axis. The four
+floor scanners use the full simulated 360° × 300° dome; the overhead crane
+scanner uses a 360° × 60° downward cone and raycasts the aircraft mesh only, so
+the hangar roof and its convex visual hull do not occlude the airplane. Sampling
+(180 × 8 rays), range (10 m), and noise (1 cm standard deviation) are temporary
+placeholders, not verified Focus Core SKU settings. Construct this node with
+the simulator's live model/data and a single-threaded executor.
 
 Use `stitch_pointclouds(clouds, transforms, target_frame)` to combine captures
 in a common coordinate frame. Supply one 4×4 homogeneous transform per cloud,

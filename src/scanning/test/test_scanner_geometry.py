@@ -16,20 +16,58 @@ SCENE_PATH = Path(__file__).parents[2] / "sim" / "models" / "scene.xml"
 
 
 class ScannerGeometryTest(unittest.TestCase):
-    def test_focus_dome_covers_full_azimuth_and_300_degree_vertical_fov(self):
-        directions = generate_directions(4, 3, 360.0, 300.0)
-        expected = np.array(
-            [
-                [0.8660254, 0.0, -0.5],
-                [0.0, 0.8660254, -0.5],
-                [-0.8660254, 0.0, -0.5],
-                [0.0, -0.8660254, -0.5],
-            ],
-            dtype=np.float32,
-        )
-        np.testing.assert_allclose(directions[:4], expected, atol=1e-6)
+    def test_directions_are_centered_on_local_positive_z_axis(self):
+        directions = generate_directions(4, 3, 360.0, 300.0, center_axis="z")
+        np.testing.assert_allclose(directions[6], [0, 0, 1], atol=1e-6)
         np.testing.assert_allclose(np.linalg.norm(directions, axis=1), 1.0, atol=1e-6)
         self.assertEqual(directions.shape, (12, 3))
+
+    def test_crane_rays_hit_aircraft_not_hangar_visual_hull(self):
+        rclpy.init()
+        model = mujoco.MjModel.from_xml_path(str(SCENE_PATH))
+        data = mujoco.MjData(model)
+        crane_x = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "crane_bridge_x")
+        crane_y = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "crane_trolley_y")
+        data.qpos[model.jnt_qposadr[crane_x]] = -20.0
+        data.qpos[model.jnt_qposadr[crane_y]] = -10.0
+        mujoco.mj_forward(model, data)
+        scanner = ScannerNode(
+            model, data, horizontal_samples=72, vertical_channels=8,
+            vertical_fov=60.0, max_range=10.0, noise_std=0.0,
+            ray_geomgroup=[1, 0, 0, 0, 0, 0], center_axis="z",
+            site_name="lidar", node_name="crane_ray_target_test",
+        )
+        try:
+            hits = set()
+            origin = data.site_xpos[scanner.site_id]
+            rotation = data.site_xmat[scanner.site_id].reshape(3, 3)
+            geom_id = np.zeros(1, dtype=np.int32)
+            for direction in scanner.directions:
+                distance = mujoco.mj_ray(
+                    model, data, origin, direction @ rotation.T,
+                    scanner.ray_geomgroup, 1,
+                    int(model.site_bodyid[scanner.site_id]), geom_id,
+                )
+                if 0.0 <= distance <= scanner.max_range:
+                    hits.add(mujoco.mj_id2name(
+                        model, mujoco.mjtObj.mjOBJ_GEOM, int(geom_id[0])
+                    ))
+            self.assertEqual(hits, {"input_mesh_visual"})
+            self.assertNotIn("hangar_visual", hits)
+            self.assertNotIn("hangar_roof_y_pos", hits)
+            self.assertNotIn("hangar_roof_y_neg", hits)
+        finally:
+            scanner.destroy_node()
+            rclpy.shutdown()
+
+    def test_scanner_rejects_invalid_vertical_fov(self):
+        rclpy.init()
+        model = mujoco.MjModel.from_xml_path(str(SCENE_PATH))
+        try:
+            with self.assertRaisesRegex(ValueError, "vertical FOV"):
+                ScannerNode(model, mujoco.MjData(model), vertical_fov=0.0)
+        finally:
+            rclpy.shutdown()
 
     def test_point_cloud_uses_xyz_float32_and_handles_empty_returns(self):
         points = np.array([[1.25, -2.0, 3.5]], dtype=np.float32)

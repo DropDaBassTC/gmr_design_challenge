@@ -11,7 +11,7 @@
     <light pos="0 0 28" dir="0 0 -1" directional="true" />
     <!-- Visual/map mesh. MuJoCo convexifies mesh collision, so scan/collision surfaces use boxes below. -->
     <geom name="hangar_visual" type="mesh" mesh="hangar" contype="0" conaffinity="0" group="2" />
-    <geom name="input_mesh_visual" type="mesh" mesh="input_mesh" contype="0" conaffinity="0" group="2" />
+    <geom name="input_mesh_visual" type="mesh" mesh="input_mesh" contype="0" conaffinity="0" group="0" />
     <geom name="hangar_floor" type="box" pos="0 0 -0.25" size="40 36 0.25" group="1" />
     <geom name="hangar_wall_x_pos" type="box" pos="40.25 0 12" size="0.25 36 12" group="1" />
     <geom name="hangar_wall_x_neg" type="box" pos="-40.25 0 12" size="0.25 36 12" group="1" />

@@ -72,6 +72,11 @@ class MujocoBridge(Node):
                 activation_guard=lambda key=key: self._scanner_activation_guard(key),
                 on_scan=self._record_scan,
                 on_capture_change=self._capture_change,
+                **({
+                    "vertical_fov": 60.0,
+                    "ray_geomgroup": [1, 0, 0, 0, 0, 0],
+                    "center_axis": "z",
+                } if key == "crane" else {}),
                 **config["scanner"],
             )
             for key, (site_name, topic_prefix, frame_id) in SCANNERS.items()

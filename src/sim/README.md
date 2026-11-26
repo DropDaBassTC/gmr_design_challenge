@@ -84,10 +84,13 @@ output directory at `/ros_ws/output`. Manual runs with `auto_scan=False` write
 one raw PLY on each scanner deactivation but do not automatically finalize the
 merged file.
 
-The FARO Focus family dome is simulated as 360° × 300°. Ray density, range,
-and noise remain placeholder values pending the exact Focus Core SKU. The
-Hangar STL is used for scan rays and visualization; simple collision boxes
-approximate its shell because MuJoCo convexifies mesh collision geometry.
+Floor scanner rays use a 360° × 300° dome. The overhead scanner uses a 360° ×
+60° cone centered downward on the aircraft top, and raycasts the aircraft mesh
+without the hangar visual hull or roof. The aircraft visual mesh is assigned a
+MuJoCo geom group visible in the viewer and selected by the overhead ray filter. Ray density, range,
+and noise remain placeholder values pending the exact Focus Core SKU. Simple
+collision boxes approximate the hangar shell because MuJoCo convexifies mesh
+collision geometry.
 
 Simulator settings live in root `sensors.yml`, bind-mounted read-only to
 `/ros_ws/sensors.yml`. Supported values and units are `scan_sequence.speed_mps`

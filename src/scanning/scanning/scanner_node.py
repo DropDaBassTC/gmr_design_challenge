@@ -10,17 +10,25 @@ from sensor_msgs.msg import PointCloud2, PointField
 from std_srvs.srv import SetBool
 
 
-def generate_directions(horizontal_samples, vertical_channels, horizontal_fov, vertical_fov):
+def generate_directions(
+    horizontal_samples, vertical_channels, horizontal_fov, vertical_fov,
+    center_axis="x",
+):
     azimuth = np.radians(
         np.linspace(-horizontal_fov / 2, horizontal_fov / 2, horizontal_samples, endpoint=False)
     )
     elevation = np.radians(np.linspace(-vertical_fov / 2, vertical_fov / 2, vertical_channels))
     azimuth, elevation = np.meshgrid(azimuth, elevation)
-    return np.stack(
-        [np.cos(elevation) * np.cos(azimuth),
-         np.cos(elevation) * np.sin(azimuth),
-         np.sin(elevation)], axis=-1,
+    directions = np.stack(
+        [np.cos(elevation) * np.sin(azimuth),
+         np.sin(elevation),
+         np.cos(elevation) * np.cos(azimuth)], axis=-1,
     ).reshape(-1, 3)
+    if center_axis == "z":
+        return directions
+    if center_axis == "x":
+        return directions[:, [2, 0, 1]]
+    raise ValueError("center_axis must be 'x' or 'z'")
 
 
 def cloud_from_points(points, frame_id):
@@ -240,7 +248,8 @@ class ScannerNode(Node):
 
     def __init__(
         self, model, data, *, horizontal_samples=180, vertical_channels=8,
-        max_range=10.0, noise_std=0.01, scan_hz=10.0, site_name="lidar",
+        max_range=10.0, noise_std=0.01, scan_hz=10.0, vertical_fov=300.0,
+        ray_geomgroup=None, center_axis="x", site_name="lidar",
         node_name="faro_scanner", topic_prefix="", frame_id=None, activation_guard=None,
         on_scan=None, on_capture_change=None,
     ):
@@ -248,8 +257,10 @@ class ScannerNode(Node):
 
         if horizontal_samples < 1 or vertical_channels < 1 or max_range <= 0 or noise_std < 0 or scan_hz <= 0:
             raise ValueError("sample counts, range, rate must be positive and noise nonnegative")
-        if not all(math.isfinite(value) for value in (max_range, noise_std, scan_hz)):
-            raise ValueError("scan range, rate, and noise must be finite")
+        if not all(math.isfinite(value) for value in (max_range, noise_std, scan_hz, vertical_fov)):
+            raise ValueError("scan range, rate, noise, and vertical FOV must be finite")
+        if not 0.0 < vertical_fov <= 360.0:
+            raise ValueError("vertical FOV must be greater than zero and at most 360 degrees")
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
         if site_id < 0:
             raise ValueError(f"MuJoCo scene is missing the '{site_name}' site")
@@ -263,10 +274,18 @@ class ScannerNode(Node):
         self.activation_guard = activation_guard
         self.on_scan = on_scan
         self.on_capture_change = on_capture_change
+        self.ray_geomgroup = (
+            None if ray_geomgroup is None
+            else np.asarray(ray_geomgroup, dtype=np.uint8)
+        )
 
-        self.directions = generate_directions(horizontal_samples, vertical_channels, 360.0, 300.0)
+        self.directions = generate_directions(
+            horizontal_samples, vertical_channels, 360.0, vertical_fov,
+            center_axis=center_axis,
+        )
         self.max_range = max_range
         self.noise_std = noise_std
+        self.vertical_fov = vertical_fov
         self.active = False
         self.publisher = self.create_publisher(PointCloud2, f"{topic_prefix}/points", 10)
         self.service = self.create_service(
@@ -274,7 +293,8 @@ class ScannerNode(Node):
         )
         self.timer = self.create_timer(1.0 / scan_hz, self.scan)
         self.get_logger().info(
-            "FARO Focus simulation: 360x300 degree dome; sampling/range/noise are placeholders"
+            f"FARO scan simulation: 360x{self.vertical_fov:g} degree FOV; "
+            "sampling/range/noise are placeholders"
         )
 
     def _set_active(self, request, response):
@@ -301,7 +321,7 @@ class ScannerNode(Node):
         points = []
         for local, world in zip(self.directions, world_directions):
             distance = self.mujoco.mj_ray(
-                self.model, self.data, origin, world, None, 1,
+                self.model, self.data, origin, world, self.ray_geomgroup, 1,
                 int(self.model.site_bodyid[self.site_id]), geomid,
             )
             if 0.0 <= distance <= self.max_range:
